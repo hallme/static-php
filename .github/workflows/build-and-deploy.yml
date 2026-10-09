@@ -56,10 +56,9 @@ jobs:
         shell: bash
         run: |
           brew install pkgconf
-          mkdir -p "$RUNNER_TEMP/pkg-config-bin"
-          ln -sf "$(brew --prefix pkgconf)/bin/pkgconf" "$RUNNER_TEMP/pkg-config-bin/pkg-config"
-          echo "$RUNNER_TEMP/pkg-config-bin" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/pkg-config-bin/pkg-config" --version
+          mkdir -p buildroot/bin
+          ln -sf "$(brew --prefix pkgconf)/bin/pkgconf" buildroot/bin/pkg-config
+          buildroot/bin/pkg-config --version
 
       - name: Prepare build environment
         run: ./spc doctor --auto-fix
