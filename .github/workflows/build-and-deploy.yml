@@ -48,7 +48,6 @@ jobs:
     env:
       PHP_VERSION: ${{ matrix.php-version }}
       GITHUB_TOKEN: ${{ github.token }}
-      SPC_CONCURRENCY: ${{ matrix.spc_os == 'macos' && '1' || '3' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -72,8 +71,11 @@ jobs:
         shell: bash
         run: |
           brew install pkgconf
-          mkdir -p buildroot/bin
+          mkdir -p buildroot/bin buildroot/lib/pkgconfig
           ln -sf "$(brew --prefix pkgconf)/bin/pkgconf" buildroot/bin/pkg-config
+          # Keep Homebrew fontconfig out of ImageMagick's static link dependencies.
+          echo "PKG_CONFIG_PATH=$PWD/buildroot/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_LIBDIR=$PWD/buildroot/lib/pkgconfig" >> "$GITHUB_ENV"
           buildroot/bin/pkg-config --version
 
       - name: Prepare build environment
@@ -95,7 +97,8 @@ jobs:
           for log_file in log/spc.shell.log log/spc.output.log; do
             if [[ -f "$log_file" ]]; then
               echo "Diagnostics from $log_file:"
-              grep -n -E -i 'error:|fatal error:|make(\[[0-9]+\])?: \*\*\*|undefined reference|clang: error:|killed: 9' "$log_file" | tail -n 120 || tail -n 80 "$log_file"
+              grep -n -E -i 'error:|fatal error:|make(\[[0-9]+\])?: \*\*\*|undefined reference|undefined symbols|ld:|library .* not found|killed: 9' "$log_file" | tail -n 120 || true
+              tail -n 60 "$log_file"
             fi
           done
 
