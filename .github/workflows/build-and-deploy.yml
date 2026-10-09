@@ -1,0 +1,108 @@
+name: Build and deploy PHP binaries
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build PHP ${{ matrix.php-version }} for ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ["8.0", "8.1", "8.2", "8.3", "8.4", "8.5"]
+        include:
+          - platform: linux-x86_64
+            spc_os: linux
+            runner: ubuntu-24.04
+          - platform: linux-aarch64
+            spc_os: linux
+            runner: ubuntu-24.04-arm
+          - platform: macos-x86_64
+            spc_os: macos
+            runner: macos-15-intel
+          - platform: macos-aarch64
+            spc_os: macos
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.php-version == '8.0' }}
+    env:
+      PHP_VERSION: ${{ matrix.php-version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download StaticPHP CLI
+        shell: bash
+        run: |
+          case "${{ matrix.platform }}" in
+            linux-x86_64) spc_arch=x86_64 ;;
+            linux-aarch64) spc_arch=aarch64 ;;
+            macos-x86_64) spc_arch=x86_64 ;;
+            macos-aarch64) spc_arch=aarch64 ;;
+          esac
+          curl --fail --location --silent --show-error \
+            "https://dl.static-php.dev/v3/spc-bin/nightly/spc-${{ matrix.spc_os }}-${spc_arch}" \
+            --output spc
+          chmod +x spc
+
+      - name: Prepare build environment
+        run: ./spc doctor --auto-fix
+
+      - name: Select PHP version
+        shell: bash
+        run: |
+          sed "s/^php-version:.*/php-version: \"${PHP_VERSION}\"/" craft.yml > craft-ci.yml
+          mv craft-ci.yml craft.yml
+
+      - name: Build PHP
+        run: ./spc craft -v
+
+      - name: Stage binary
+        run: |
+          mkdir -p dist
+          install -m 0755 buildroot/bin/php "dist/php-${{ matrix.php-version }}-${{ matrix.platform }}"
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: php-${{ matrix.php-version }}-${{ matrix.platform }}
+          path: dist/php-${{ matrix.php-version }}-${{ matrix.platform }}
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Deploy binaries to server
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Upload binaries over HTTP
+        env:
+          DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+          DEPLOY_API_KEY: ${{ secrets.DEPLOY_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_URL:?Set DEPLOY_URL in repository secrets}"
+          : "${DEPLOY_API_KEY:?Set DEPLOY_API_KEY in repository secrets}"
+
+          for binary in dist/php-*; do
+            echo "Uploading $(basename "$binary")"
+            curl --fail-with-body --silent --show-error \
+              --retry 3 --retry-all-errors --connect-timeout 15 --max-time 600 \
+              -H "Authorization: Bearer ${DEPLOY_API_KEY}" \
+              -F "file=@${binary};filename=$(basename "$binary")" \
+              "$DEPLOY_URL"
+          done
