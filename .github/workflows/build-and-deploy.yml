@@ -34,7 +34,7 @@ jobs:
     env:
       PHP_VERSION: ${{ matrix.php-version }}
       GITHUB_TOKEN: ${{ github.token }}
-      SPC_CONCURRENCY: ${{ runner.os == 'macOS' && '1' || '3' }}
+      SPC_CONCURRENCY: ${{ matrix.spc_os == 'macos' && '1' || '3' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
