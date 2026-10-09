@@ -75,6 +75,8 @@ jobs:
           # Keep Homebrew fontconfig out of ImageMagick's static link dependencies.
           echo "PKG_CONFIG_PATH=$PWD/buildroot/lib/pkgconfig" >> "$GITHUB_ENV"
           echo "PKG_CONFIG_LIBDIR=$PWD/buildroot/lib/pkgconfig" >> "$GITHUB_ENV"
+          # PHP's static curl probe needs the macOS frameworks used by libcurl.
+          echo "SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS=-framework SystemConfiguration -framework CoreFoundation -framework CoreServices" >> "$GITHUB_ENV"
           buildroot/bin/pkg-config --version
 
       - name: Prepare build environment
