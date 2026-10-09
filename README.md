@@ -11,7 +11,7 @@ The server deployment sends one `multipart/form-data` HTTP POST per binary. Each
 | `DEPLOY_URL` | HTTPS URL that accepts the binary upload POSTs |
 | `DEPLOY_API_KEY` | API key sent as a Bearer token |
 
-Each uploaded file is named by PHP version and platform, for example `php-8.5-linux-x86_64` and `php-8.4-macos-aarch64`. Upload requests retry transient failures up to three times.
+Each uploaded file is named by the exact built PHP version and platform, for example `php-8.5.8-linux-x86_64` and `php-8.3.35-macos-aarch64`. GitHub Actions stores successful builds as artifacts first, then the deploy job uploads each available binary to the server, even when another matrix build fails. Upload requests retry transient failures up to three times.
 
 
 To build locally, install StaticPHP v3 and run:
