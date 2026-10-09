@@ -33,6 +33,8 @@ jobs:
     continue-on-error: ${{ matrix.php-version == '8.0' }}
     env:
       PHP_VERSION: ${{ matrix.php-version }}
+      GITHUB_TOKEN: ${{ github.token }}
+      SPC_CONCURRENCY: ${{ runner.os == 'macOS' && '1' || '3' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -71,6 +73,26 @@ jobs:
 
       - name: Build PHP
         run: ./spc craft -v
+
+      - name: Show StaticPHP build errors
+        if: failure()
+        shell: bash
+        run: |
+          for log_file in log/spc.shell.log log/spc.output.log; do
+            if [[ -f "$log_file" ]]; then
+              echo "Diagnostics from $log_file:"
+              grep -n -E -i 'error:|fatal error:|make(\[[0-9]+\])?: \*\*\*|undefined reference|clang: error:|killed: 9' "$log_file" | tail -n 120 || tail -n 80 "$log_file"
+            fi
+          done
+
+      - name: Upload StaticPHP logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staticphp-logs-${{ matrix.php-version }}-${{ matrix.platform }}
+          path: log/
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Stage binary
         run: |
