@@ -91,7 +91,8 @@ jobs:
           spc_extra_php_vars=""
           if [[ "$PHP_VERSION" == "8.0" ]]; then
             # PHP 8.0 still uses ATTRIBUTE_UNUSED, which current libxml2 headers no longer define.
-            spc_extra_php_vars="CPPFLAGS=\"-I$PWD/buildroot/include -DATTRIBUTE_UNUSED=__attribute__((unused))\""
+            # An empty marker is valid C and avoids parentheses in Makefile shell commands.
+            spc_extra_php_vars="CPPFLAGS=\"-I$PWD/buildroot/include -DATTRIBUTE_UNUSED=\""
           fi
           if [[ "$RUNNER_OS" == "macOS" && "$PHP_VERSION" =~ ^8\.[0-3]$ ]]; then
             # Older PHP probes -lpq alone; static libpq also needs pgcommon/pgport.
@@ -126,23 +127,34 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Stage binary
+      - name: Stage CLI and FPM binaries
         id: stage
         shell: bash
         run: |
           set -euo pipefail
           php_full_version="$(buildroot/bin/php -r 'echo PHP_VERSION;')"
           [[ "$php_full_version" == "${PHP_VERSION}."* ]]
-          binary_name="php-${php_full_version}-${{ matrix.platform }}"
           mkdir -p dist
-          install -m 0755 buildroot/bin/php "dist/$binary_name"
-          echo "binary_name=$binary_name" >> "$GITHUB_OUTPUT"
+          cli_name="php-${php_full_version}-cli-${{ matrix.platform }}"
+          fpm_name="php-${php_full_version}-fpm-${{ matrix.platform }}"
+          install -m 0755 buildroot/bin/php "dist/$cli_name"
+          install -m 0755 buildroot/bin/php-fpm "dist/$fpm_name"
+          echo "cli_name=$cli_name" >> "$GITHUB_OUTPUT"
+          echo "fpm_name=$fpm_name" >> "$GITHUB_OUTPUT"
 
-      - name: Upload binary
+      - name: Upload CLI binary
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.stage.outputs.binary_name }}
-          path: dist/${{ steps.stage.outputs.binary_name }}
+          name: ${{ steps.stage.outputs.cli_name }}
+          path: dist/${{ steps.stage.outputs.cli_name }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload FPM binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.stage.outputs.fpm_name }}
+          path: dist/${{ steps.stage.outputs.fpm_name }}
           if-no-files-found: error
           retention-days: 7
 
