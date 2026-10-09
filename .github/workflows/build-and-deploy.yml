@@ -5,6 +5,20 @@ on:
     branches: [main]
     tags: ["v*.*.*"]
   workflow_dispatch:
+    inputs:
+      php_version:
+        description: PHP version to build on all platforms
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - "8.0"
+          - "8.1"
+          - "8.2"
+          - "8.3"
+          - "8.4"
+          - "8.5"
 
 permissions:
   contents: read
@@ -15,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php-version: ["8.0", "8.1", "8.2", "8.3", "8.4", "8.5"]
+        php-version: ${{ fromJSON(inputs.php_version != '' && inputs.php_version != 'all' && format('["{0}"]', inputs.php_version) || '["8.0","8.1","8.2","8.3","8.4","8.5"]') }}
         include:
           - platform: linux-x86_64
             spc_os: linux
