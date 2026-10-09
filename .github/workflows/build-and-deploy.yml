@@ -19,6 +19,17 @@ on:
           - "8.3"
           - "8.4"
           - "8.5"
+      platform:
+        description: OS and CPU architecture to build
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - linux-x86_64
+          - linux-aarch64
+          - macos-x86_64
+          - macos-aarch64
 
 permissions:
   contents: read
@@ -30,20 +41,8 @@ jobs:
       fail-fast: false
       matrix:
         php-version: ${{ fromJSON(inputs.php_version != '' && inputs.php_version != 'all' && format('["{0}"]', inputs.php_version) || '["8.0","8.1","8.2","8.3","8.4","8.5"]') }}
-        include:
-          - platform: linux-x86_64
-            spc_os: linux
-            runner: ubuntu-24.04
-          - platform: linux-aarch64
-            spc_os: linux
-            runner: ubuntu-24.04-arm
-          - platform: macos-x86_64
-            spc_os: macos
-            runner: macos-15-intel
-          - platform: macos-aarch64
-            spc_os: macos
-            runner: macos-15
-    runs-on: ${{ matrix.runner }}
+        platform: ${{ fromJSON(inputs.platform != '' && inputs.platform != 'all' && format('["{0}"]', inputs.platform) || '["linux-x86_64","linux-aarch64","macos-x86_64","macos-aarch64"]') }}
+    runs-on: ${{ matrix.platform == 'linux-x86_64' && 'ubuntu-24.04' || matrix.platform == 'linux-aarch64' && 'ubuntu-24.04-arm' || matrix.platform == 'macos-x86_64' && 'macos-15-intel' || 'macos-15' }}
     continue-on-error: ${{ matrix.php-version == '8.0' }}
     env:
       PHP_VERSION: ${{ matrix.php-version }}
@@ -56,13 +55,13 @@ jobs:
         shell: bash
         run: |
           case "${{ matrix.platform }}" in
-            linux-x86_64) spc_arch=x86_64 ;;
-            linux-aarch64) spc_arch=aarch64 ;;
-            macos-x86_64) spc_arch=x86_64 ;;
-            macos-aarch64) spc_arch=aarch64 ;;
+            linux-*) spc_os=linux ;;
+            macos-*) spc_os=macos ;;
           esac
+          spc_arch="${{ matrix.platform }}"
+          spc_arch="${spc_arch#*-}"
           curl --fail --location --silent --show-error \
-            "https://dl.static-php.dev/v3/spc-bin/nightly/spc-${{ matrix.spc_os }}-${spc_arch}" \
+            "https://dl.static-php.dev/v3/spc-bin/nightly/spc-${spc_os}-${spc_arch}" \
             --output spc
           chmod +x spc
 
