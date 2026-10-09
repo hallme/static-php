@@ -51,6 +51,10 @@ jobs:
             --output spc
           chmod +x spc
 
+      - name: Install pkg-config on macOS
+        if: runner.os == 'macOS'
+        run: brew list --versions pkg-config >/dev/null 2>&1 || brew install pkg-config
+
       - name: Prepare build environment
         run: ./spc doctor --auto-fix
 
