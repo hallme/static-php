@@ -93,6 +93,9 @@ jobs:
             # PHP 8.0 still uses ATTRIBUTE_UNUSED, which current libxml2 headers no longer define.
             # An empty marker is valid C and avoids parentheses in Makefile shell commands.
             spc_extra_php_vars="CPPFLAGS=\"-I$PWD/buildroot/include -DATTRIBUTE_UNUSED=\""
+            # PHP 8.0's intl adds -std=c++11; ICU 77 headers require C++17.
+            # ICU_CXXFLAGS comes after that flag in intl's compilation commands.
+            spc_extra_php_vars="${spc_extra_php_vars} ICU_CXXFLAGS=-std=c++17"
           fi
           if [[ "$RUNNER_OS" == "macOS" && "$PHP_VERSION" =~ ^8\.[0-3]$ ]]; then
             # Older PHP probes -lpq alone; static libpq also needs pgcommon/pgport.
