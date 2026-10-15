@@ -51,72 +51,20 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Download StaticPHP CLI
+      - name: Build CLI and FPM binaries
+        id: build
         shell: bash
-        run: |
-          case "${{ matrix.platform }}" in
-            linux-*) spc_os=linux ;;
-            macos-*) spc_os=macos ;;
-          esac
-          spc_arch="${{ matrix.platform }}"
-          spc_arch="${spc_arch#*-}"
-          curl --fail --location --silent --show-error \
-            "https://dl.static-php.dev/v3/spc-bin/nightly/spc-${spc_os}-${spc_arch}" \
-            --output spc
-          chmod +x spc
-
-      - name: Install pkg-config on macOS
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          brew install pkgconf
-          mkdir -p buildroot/bin buildroot/lib/pkgconfig
-          ln -sf "$(brew --prefix pkgconf)/bin/pkgconf" buildroot/bin/pkg-config
-          # Keep Homebrew fontconfig out of ImageMagick's static link dependencies.
-          echo "PKG_CONFIG_PATH=$PWD/buildroot/lib/pkgconfig" >> "$GITHUB_ENV"
-          echo "PKG_CONFIG_LIBDIR=$PWD/buildroot/lib/pkgconfig" >> "$GITHUB_ENV"
-          # PHP's static curl probe needs the macOS frameworks used by libcurl.
-          echo "SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS=-framework SystemConfiguration -framework CoreFoundation -framework CoreServices" >> "$GITHUB_ENV"
-          buildroot/bin/pkg-config --version
-
-      - name: Prepare build environment
-        run: ./spc doctor --auto-fix
-
-      - name: Select PHP version
-        shell: bash
-        run: |
-          sed "s/^php-version:.*/php-version: \"${PHP_VERSION}\"/" craft.yml > craft-ci.yml
-          mv craft-ci.yml craft.yml
-
-          spc_extra_php_vars=""
-          if [[ "$PHP_VERSION" == "8.0" ]]; then
-            # PHP 8.0 still uses ATTRIBUTE_UNUSED, which current libxml2 headers no longer define.
-            # An empty marker is valid C and avoids parentheses in Makefile shell commands.
-            spc_extra_php_vars="CPPFLAGS=\"-I$PWD/buildroot/include -DATTRIBUTE_UNUSED=\""
-            # PHP 8.0's intl adds -std=c++11; ICU 77 headers require C++17.
-            # ICU_CXXFLAGS comes after that flag in intl's compilation commands.
-            spc_extra_php_vars="${spc_extra_php_vars} ICU_CXXFLAGS=-std=c++17"
-          fi
-          if [[ "$RUNNER_OS" == "macOS" && "$PHP_VERSION" =~ ^8\.[0-3]$ ]]; then
-            # Older PHP probes -lpq alone; static libpq also needs pgcommon/pgport.
-            # The symbol exists, but that incomplete configure link reports a false negative.
-            spc_extra_php_vars="${spc_extra_php_vars} ac_cv_lib_pq_PQlibVersion=yes"
-          fi
-          if [[ -n "$spc_extra_php_vars" ]]; then
-            echo "SPC_EXTRA_PHP_VARS=${spc_extra_php_vars# }" >> "$GITHUB_ENV"
-          fi
-
-      - name: Build PHP
-        run: ./spc craft -v
+        run: bash scripts/build.sh "$PHP_VERSION"
 
       - name: Show StaticPHP build errors
         if: failure()
         shell: bash
         run: |
-          for log_file in log/spc.shell.log log/spc.output.log; do
+          build_dir=".build/$PHP_VERSION-${{ matrix.platform }}"
+          for log_file in "$build_dir/log/spc.shell.log" "$build_dir/log/spc.output.log" "$build_dir/console.log"; do
             if [[ -f "$log_file" ]]; then
               echo "Diagnostics from $log_file:"
-              grep -n -E -i 'error:|fatal error:|make(\[[0-9]+\])?: \*\*\*|undefined reference|undefined symbols|ld:|library .* not found|killed: 9' "$log_file" | tail -n 120 || true
+              grep -n -E -i 'error:|fatal error:|syntax error|make(\[[0-9]+\])?: \*\*\*|undefined reference|undefined symbols|ld:|library .* not found|killed: 9' "$log_file" | tail -n 120 || true
               tail -n 60 "$log_file"
             fi
           done
@@ -126,38 +74,29 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: staticphp-logs-${{ matrix.php-version }}-${{ matrix.platform }}
-          path: log/
+          path: |
+            .build/${{ matrix.php-version }}-${{ matrix.platform }}/log/
+            .build/${{ matrix.php-version }}-${{ matrix.platform }}/console.log
+            .build/${{ matrix.php-version }}-${{ matrix.platform }}/craft.yml
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
-
-      - name: Stage CLI and FPM binaries
-        id: stage
-        shell: bash
-        run: |
-          set -euo pipefail
-          php_full_version="$(buildroot/bin/php -r 'echo PHP_VERSION;')"
-          [[ "$php_full_version" == "${PHP_VERSION}."* ]]
-          mkdir -p dist
-          cli_name="php-${php_full_version}-cli-${{ matrix.platform }}"
-          fpm_name="php-${php_full_version}-fpm-${{ matrix.platform }}"
-          install -m 0755 buildroot/bin/php "dist/$cli_name"
-          install -m 0755 buildroot/bin/php-fpm "dist/$fpm_name"
-          echo "cli_name=$cli_name" >> "$GITHUB_OUTPUT"
-          echo "fpm_name=$fpm_name" >> "$GITHUB_OUTPUT"
 
       - name: Upload CLI binary
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.stage.outputs.cli_name }}
-          path: dist/${{ steps.stage.outputs.cli_name }}
+          name: ${{ steps.build.outputs.cli_name }}
+          path: .build/${{ matrix.php-version }}-${{ matrix.platform }}/dist/${{ steps.build.outputs.cli_name }}
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
 
       - name: Upload FPM binary
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.stage.outputs.fpm_name }}
-          path: dist/${{ steps.stage.outputs.fpm_name }}
+          name: ${{ steps.build.outputs.fpm_name }}
+          path: .build/${{ matrix.php-version }}-${{ matrix.platform }}/dist/${{ steps.build.outputs.fpm_name }}
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
 
