@@ -73,6 +73,10 @@ if [[ "$php_version" == 8.0 || "$php_version" == 8.0.* ]]; then
   spc_extra_php_vars="$spc_extra_php_vars CPPFLAGS=\"-I$build_dir/buildroot/include -DATTRIBUTE_UNUSED=\""
   # intl's ICU_CXXFLAGS follows PHP 8.0's hardcoded -std=c++11.
   spc_extra_php_vars="$spc_extra_php_vars ICU_CXXFLAGS=-std=c++17"
+  if [[ "$platform" == macos-x86_64 ]]; then
+    # PHP GH-16348: Apple's toolchain misinterprets the old x86 assembly labels.
+    export SPC_CMD_PREFIX_PHP_BUILDCONF="bash \"$repo_dir/scripts/php80-macos-buildconf.sh\""
+  fi
 fi
 if [[ "$build_os" == macos && "$php_version" =~ ^8\.[0-3](\.|$) ]]; then
   # Older PHP's configure probe links -lpq without its static dependencies.
@@ -102,7 +106,7 @@ stage_binaries() {
       echo "Re-running the version check under LLDB to capture the crash backtrace."
       if ! lldb --no-lldbinit --batch \
         -o 'settings set target.disable-aslr false' \
-        -o run -o 'thread backtrace all' \
+        -o run -k 'thread backtrace all' -k 'register read' \
         -- "$build_dir/buildroot/bin/php" -n -r 'echo PHP_VERSION;'; then
         echo "LLDB diagnostics finished; the original CLI failure remains exit $version_status." >&2
       fi
