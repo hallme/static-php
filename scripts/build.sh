@@ -89,15 +89,40 @@ build_php() {
 # pipefail preserves build failures while retaining complete console output.
 build_php 2>&1 | tee console.log
 
-php_full_version="$(buildroot/bin/php -r 'echo PHP_VERSION;')"
-[[ "$php_full_version" == "$php_version" || "$php_full_version" == "$php_version."* ]]
-cli_name="php-$php_full_version-cli-$platform"
-fpm_name="php-$php_full_version-fpm-$platform"
-install -m 0755 buildroot/bin/php "dist/$cli_name"
-install -m 0755 buildroot/bin/php-fpm "dist/$fpm_name"
-if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
-  echo "cli_name=$cli_name" >> "$GITHUB_OUTPUT"
-  echo "fpm_name=$fpm_name" >> "$GITHUB_OUTPUT"
-fi
-echo "Built $build_dir/dist/$cli_name"
-echo "Built $build_dir/dist/$fpm_name"
+stage_binaries() {
+  echo "Staging CLI and FPM binaries"
+  local php_full_version cli_name fpm_name version_status
+  if php_full_version="$(buildroot/bin/php -n -r 'echo PHP_VERSION;')"; then
+    echo "Built PHP version: $php_full_version"
+  else
+    version_status=$?
+    echo "Failed to read the built CLI version (exit $version_status)." >&2
+    if [[ "$build_os" == macos && "$version_status" == 139 ]] && command -v lldb >/dev/null; then
+      # Capture the native crash rather than publishing a binary that cannot run.
+      echo "Re-running the version check under LLDB to capture the crash backtrace."
+      if ! lldb --no-lldbinit --batch \
+        -o 'settings set target.disable-aslr false' \
+        -o run -o 'thread backtrace all' \
+        -- "$build_dir/buildroot/bin/php" -n -r 'echo PHP_VERSION;'; then
+        echo "LLDB diagnostics finished; the original CLI failure remains exit $version_status." >&2
+      fi
+    fi
+    return "$version_status"
+  fi
+  if [[ "$php_full_version" != "$php_version" && "$php_full_version" != "$php_version."* ]]; then
+    printf 'Expected PHP %s, but the CLI returned %q.\n' "$php_version" "$php_full_version" >&2
+    return 1
+  fi
+  cli_name="php-$php_full_version-cli-$platform"
+  fpm_name="php-$php_full_version-fpm-$platform"
+  install -m 0755 buildroot/bin/php "dist/$cli_name"
+  install -m 0755 buildroot/bin/php-fpm "dist/$fpm_name"
+  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+    echo "cli_name=$cli_name" >> "$GITHUB_OUTPUT"
+    echo "fpm_name=$fpm_name" >> "$GITHUB_OUTPUT"
+  fi
+  echo "Built $build_dir/dist/$cli_name"
+  echo "Built $build_dir/dist/$fpm_name"
+}
+# Include staging failures in the same artifact as compiler diagnostics.
+stage_binaries 2>&1 | tee -a console.log
