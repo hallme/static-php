@@ -1,13 +1,10 @@
 name: Build and deploy PHP binaries
 
 on:
-  push:
-    branches: [main]
-    tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
       php_version:
-        description: PHP version to build on all platforms
+        description: PHP version to build
         type: choice
         required: true
         default: all
